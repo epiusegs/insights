@@ -15,7 +15,6 @@ add_to_apps_screen = [
 		"logo": "/assets/insights/favicon.png",
 		"title": "Insights",
 		"route": "/insights",
-		"has_permission": "insights.permissions.check_app_permission",
 	}
 ]
 # Includes in <head>
