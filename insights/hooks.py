@@ -8,7 +8,15 @@ app_email = "hello@frappe.io"
 app_license = "GNU GPLv3"
 
 export_python_type_annotations = True
-
+add_to_apps_screen = [
+	{
+		"name": "insights",
+		"logo": "/assets/insights/favicon.png",
+		"title": "Insights",
+		"route": "/insights",
+		"has_permission": "insights.permissions.check_app_permission",
+	}
+]
 # Includes in <head>
 # ------------------
 
