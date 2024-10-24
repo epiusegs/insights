@@ -2,6 +2,7 @@ import { call } from 'frappe-ui'
 import { computed, InjectionKey, reactive, toRefs } from 'vue'
 import { useRouter } from 'vue-router'
 import useChart from '../charts/chart'
+import { handleOldYAxisConfig } from '../charts/helpers'
 import useDashboard from '../dashboard/dashboard'
 import { getUniqueId, safeJSONParse, wheneverChanges } from '../helpers'
 import { confirmDialog } from '../helpers/confirm_dialog'
@@ -15,7 +16,6 @@ import type {
 	WorkbookChart,
 	WorkbookSharePermission,
 } from '../types/workbook.types'
-import { handleOldYAxisConfig } from '../charts/helpers'
 
 export default function useWorkbook(name: string) {
 	const workbook = getWorkbookResource(name)
@@ -86,7 +86,7 @@ export default function useWorkbook(name: string) {
 			name: getUniqueId(),
 			title: `Chart ${idx + 1}`,
 			query: '',
-			chart_type: 'Line',
+			chart_type: 'Bar',
 			public: false,
 			config: {} as WorkbookChart['config'],
 		})
@@ -261,11 +261,11 @@ function getWorkbookResource(name: string) {
 			charts: [],
 			dashboards: [],
 		},
-		transform(doc) {
+		transform(doc: any) {
 			doc.queries = safeJSONParse(doc.queries) || []
 			doc.charts = safeJSONParse(doc.charts) || []
 			doc.dashboards = safeJSONParse(doc.dashboards) || []
-			doc.charts.forEach((chart) => {
+			doc.charts.forEach((chart: any) => {
 				chart.config.filters = chart.config.filters?.filters?.length
 					? chart.config.filters
 					: {
@@ -284,4 +284,9 @@ function getWorkbookResource(name: string) {
 		},
 	})
 	return workbook
+}
+
+export function newWorkbookName() {
+	const unique_id = getUniqueId()
+	return `new-workbook-${unique_id}`
 }
