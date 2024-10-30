@@ -2,14 +2,15 @@
 import { computed } from 'vue'
 import { formatNumber, getShortNumber, scrub } from '../../helpers'
 import { NumberChartConfig } from '../../types/chart.types'
-import { Measure } from '../../types/query.types'
-import { Chart } from '../chart'
+import { QueryResult } from '../../types/query.types'
 import Sparkline from './Sparkline.vue'
 
-const props = defineProps<{ chart: Chart }>()
+const props = defineProps<{
+	config: NumberChartConfig
+	result: QueryResult
+}>()
 
-const title = computed(() => props.chart.doc.title)
-const config = computed(() => props.chart.doc.config as NumberChartConfig)
+const config = computed(() => props.config)
 
 const numberColumns = computed(() => {
 	return config.value.number_columns.filter((c) => c.measure_name).map((c) => c.measure_name)
@@ -17,23 +18,22 @@ const numberColumns = computed(() => {
 const dateValues = computed(() => {
 	if (!config.value.date_column) return []
 	const date_column = config.value.date_column.column_name
-	return props.chart.dataQuery.result.rows.map((row: any) => row[date_column])
+	return props.result.rows.map((row: any) => row[date_column])
 })
 const numberValuesPerColumn = computed(() => {
 	if (!config.value.number_columns?.length) return {}
-	if (!props.chart.dataQuery.result?.rows) return {}
+	if (!props.result?.rows?.length) return {}
 
 	return numberColumns.value.reduce((acc: any, measure_name: string) => {
-		acc[scrub(measure_name)] = props.chart.dataQuery.result.rows.map(
-			(row: any) => row[scrub(measure_name)]
-		)
+		acc[scrub(measure_name)] = props.result.rows.map((row: any) => row[scrub(measure_name)])
 		return acc
 	}, {})
 })
 
 const cards = computed(() => {
 	if (!config.value.number_columns?.length) return []
-	if (!props.chart.dataQuery.result?.rows) return []
+	if (!props.result?.rows) return []
+	if (!Object.keys(numberValuesPerColumn.value).length) return []
 
 	return numberColumns.value.map((measure_name: string) => {
 		const numberValues = numberValuesPerColumn.value[scrub(measure_name)]
@@ -64,31 +64,33 @@ const getFormattedValue = (value: number) => {
 </script>
 
 <template>
-	<div class="grid w-full grid-cols-[repeat(auto-fill,214px)] gap-4">
-		<div
-			v-for="{ measure_name, values, currentValue, delta, percentDelta } in cards"
-			:key="measure_name"
-			class="flex h-[140px] items-center gap-2 overflow-y-auto rounded bg-white py-4 px-6 shadow"
-		>
-			<div class="flex w-full flex-col">
-				<span class="truncate text-sm font-medium">
-					{{ measure_name }}
-				</span>
-				<div class="flex-1 flex-shrink-0 text-[24px] font-semibold leading-10">
-					{{ config.prefix }}{{ currentValue }}{{ config.suffix }}
-				</div>
-				<div
-					v-if="config.comparison"
-					class="flex items-center gap-1 text-xs font-medium"
-					:class="delta >= 0 ? 'text-green-500' : 'text-red-500'"
-				>
-					<span class="">
-						{{ delta >= 0 && !config.negative_is_better ? '↑' : '↓' }}
+	<div class="h-full w-full @container">
+		<div class="grid w-full grid-cols-4 gap-4 @5xl:grid-cols-5">
+			<div
+				v-for="{ measure_name, values, currentValue, delta, percentDelta } in cards"
+				:key="measure_name"
+				class="flex h-[140px] items-center gap-2 overflow-y-auto rounded bg-white py-4 px-6 shadow"
+			>
+				<div class="flex w-full flex-col">
+					<span class="truncate text-sm font-medium">
+						{{ measure_name }}
 					</span>
-					<span> {{ percentDelta }}% </span>
-				</div>
-				<div v-if="config.sparkline" class="mt-2 h-[18px] w-[80px]">
-					<Sparkline :dates="dateValues" :values="values" />
+					<div class="flex-1 flex-shrink-0 text-[24px] font-semibold leading-10">
+						{{ config.prefix }}{{ currentValue }}{{ config.suffix }}
+					</div>
+					<div
+						v-if="config.comparison"
+						class="flex items-center gap-1 text-xs font-medium"
+						:class="delta >= 0 ? 'text-green-500' : 'text-red-500'"
+					>
+						<span class="">
+							{{ delta >= 0 && !config.negative_is_better ? '↑' : '↓' }}
+						</span>
+						<span> {{ percentDelta }}% </span>
+					</div>
+					<div v-if="config.sparkline" class="mt-2 h-[18px] w-[80px]">
+						<Sparkline :dates="dateValues" :values="values" />
+					</div>
 				</div>
 			</div>
 		</div>

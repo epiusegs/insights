@@ -179,7 +179,6 @@ def update_admin_team(user, method=None):
 def clear_cache():
     get_teams.clear_cache()
     admin_team_members.clear_cache()
-    is_admin.clear_cache()
     _get_allowed_resources_for_user.clear_cache()
 
 
@@ -207,10 +206,12 @@ def admin_team_members():
     )
 
 
-@site_cache(ttl=60 * 60 * 24)
 def is_admin(user):
-    if user == "Administrator" or user in admin_team_members():
-        return True
+    return (
+        user == "Administrator"
+        or user in admin_team_members()
+        or frappe.flags.ignore_insights_permissions
+    )
 
 
 def get_allowed_resources_for_user(resource_type, user=None):

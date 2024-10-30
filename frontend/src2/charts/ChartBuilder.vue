@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMagicKeys, watchDebounced, whenever } from '@vueuse/core'
-import { ImageDown, RefreshCcw } from 'lucide-vue-next'
+import { ImageDown, RefreshCcw, Share2 } from 'lucide-vue-next'
 import { onBeforeUnmount, provide, ref } from 'vue'
 import InlineFormControlLabel from '../components/InlineFormControlLabel.vue'
 import LoadingOverlay from '../components/LoadingOverlay.vue'
@@ -12,6 +12,7 @@ import ChartConfigForm from './components/ChartConfigForm.vue'
 import ChartFilterConfig from './components/ChartFilterConfig.vue'
 import ChartQuerySelector from './components/ChartQuerySelector.vue'
 import ChartRenderer from './components/ChartRenderer.vue'
+import ChartShareDialog from './components/ChartShareDialog.vue'
 import ChartSortConfig from './components/ChartSortConfig.vue'
 import ChartTypeSelector from './components/ChartTypeSelector.vue'
 import CollapsibleSection from './components/CollapsibleSection.vue'
@@ -60,6 +61,8 @@ function downloadChart() {
 		},
 	})
 }
+
+const showShareDialog = ref(false)
 </script>
 
 <template>
@@ -70,7 +73,13 @@ function downloadChart() {
 				ref="chartEl"
 				class="flex min-h-[24rem] flex-1 flex-shrink-0 items-center justify-center overflow-hidden p-4"
 			>
-				<ChartRenderer :chart="chart" />
+				<ChartRenderer
+					:title="chart.doc.title"
+					:chart_type="chart.doc.chart_type"
+					:config="chart.doc.config"
+					:operations="chart.doc.operations || chart.dataQuery.operations || []"
+					:result="chart.dataQuery.result"
+				/>
 			</div>
 			<ChartBuilderTable v-if="chart.dataQuery.result.executedSQL" />
 		</div>
@@ -122,8 +131,17 @@ function downloadChart() {
 						</template>
 						Export as PNG
 					</Button>
+
+					<Button class="w-full" @click="showShareDialog = true">
+						<template #prefix>
+							<Share2 class="h-4 text-gray-700" stroke-width="1.5" />
+						</template>
+						Share Chart
+					</Button>
 				</div>
 			</CollapsibleSection>
 		</div>
 	</div>
+
+	<ChartShareDialog v-model="showShareDialog" :chart="chart" />
 </template>

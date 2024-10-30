@@ -20,6 +20,12 @@ const routes = [
 		component: () => import('./dashboard/DashboardList.vue'),
 	},
 	{
+		props: true,
+		name: 'Dashboard',
+		path: '/dashboard/:name',
+		component: () => import('./dashboard/Dashboard.vue'),
+	},
+	{
 		path: '/workbook',
 		name: 'WorkbookList',
 		component: () => import('./workbook/WorkbookList.vue'),
@@ -70,6 +76,11 @@ const routes = [
 		component: () => import('./data_source/DataSourceTable.vue'),
 	},
 	{
+		path: '/data-store',
+		name: 'DataStoreList',
+		component: () => import('./data_store/DataStoreList.vue'),
+	},
+	{
 		path: '/users',
 		name: 'UserList',
 		component: () => import('./users/UserList.vue'),
@@ -78,6 +89,16 @@ const routes = [
 		path: '/teams',
 		name: 'TeamList',
 		component: () => import('./teams/TeamList.vue'),
+	},
+	{
+		props: true,
+		name: 'SharedChart',
+		path: '/shared/chart/:chart_name',
+		component: () => import('./charts/SharedChart.vue'),
+		meta: {
+			hideSidebar: true,
+			isGuestView: true,
+		},
 	},
 	{
 		path: '/:pathMatch(.*)*',

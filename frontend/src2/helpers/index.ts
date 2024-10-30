@@ -256,7 +256,17 @@ export function flattenOptions(
 		: (options as DropdownOption[])
 }
 
-
 export function scrub(text: string, spacer = '_') {
-	return text.replace(/ /g, spacer).toLowerCase();
+	return text.replace(/ /g, spacer).toLowerCase()
+}
+
+type OptionKey = keyof DropdownOption
+export function toOptions(arr: any[], map: Record<OptionKey, string>) {
+	return arr.map((item) => {
+		Object.keys(map).forEach((key) => {
+			// @ts-ignore
+			item[key] = item[map[key]]
+		})
+		return item
+	})
 }
