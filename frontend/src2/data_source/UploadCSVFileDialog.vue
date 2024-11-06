@@ -66,7 +66,7 @@ function importCSVData() {
 	<Dialog
 		v-model="show"
 		:options="{
-			title: csvData.tablename ? `Import '${csvData.tablename}' Table` : 'Upload CSV File',
+			title: csvData.tablename ? 'Import Table' : 'Upload CSV File',
 			size: fileUploaded ? '4xl' : '',
 		}"
 	>
@@ -107,24 +107,26 @@ function importCSVData() {
 				</template>
 			</FileUploader>
 
-			<div
-				v-else
-				class="relative flex h-[30rem] w-full flex-1 flex-col overflow-hidden rounded border bg-white"
-			>
-				<DataTable
-					:columns="csvData.columns"
-					:rows="csvData.rows"
-					:loading="csvData.loading"
+			<div v-else class="flex flex-col gap-4">
+				<div>
+					<FormControl class="w-fit" label="Table Name" v-model="csvData.tablename" />
+				</div>
+				<div
+					class="relative flex h-[30rem] w-full flex-col overflow-hidden rounded border bg-white"
 				>
-					<template #footer>
-						<div class="flex flex-shrink-0 items-center gap-3 border-t p-2">
-							<p class="tnum text-sm text-gray-600">
+					<DataTable
+						:columns="csvData.columns"
+						:rows="csvData.rows"
+						:loading="csvData.loading"
+					>
+						<template #footer-left>
+							<p class="tnum p-1 text-sm text-gray-600">
 								Showing {{ csvData.rows.length }} of
 								{{ csvData.totalRowCount }} rows
 							</p>
-						</div>
-					</template>
-				</DataTable>
+						</template>
+					</DataTable>
+				</div>
 			</div>
 			<div class="mt-4 flex justify-between pt-2">
 				<div class="ml-auto flex items-center space-x-2">

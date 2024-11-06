@@ -57,7 +57,7 @@ watchEffect(() => {
 </script>
 
 <template>
-	<header class="mb-2 flex h-12 items-center justify-between border-b py-2.5 pl-5 pr-2">
+	<header class="flex h-12 items-center justify-between border-b py-2.5 pl-5 pr-2">
 		<Breadcrumbs
 			:items="[
 				{ label: 'Data Sources', route: '/data-source' },
@@ -67,7 +67,7 @@ watchEffect(() => {
 		<div class="flex items-center gap-2"></div>
 	</header>
 
-	<div class="mb-4 flex h-full flex-col gap-2 overflow-auto px-4">
+	<div class="mb-4 flex h-full flex-col gap-3 overflow-auto px-5 py-3">
 		<div class="flex gap-2 overflow-visible py-1">
 			<FormControl placeholder="Search by Title" v-model="searchQuery" :debounce="300">
 				<template #prefix>
@@ -82,6 +82,15 @@ watchEffect(() => {
 							tableStore
 								.updateDataSourceTables(props.name)
 								.then(() => updateTablesList()),
+						icon: () =>
+							h(RefreshCcw, {
+								class: 'h-4 w-4 text-gray-700',
+								'stroke-width': '1.5',
+							}),
+					},
+					{
+						label: 'Update Table Links',
+						onClick: () => tableStore.updateTableLinks(props.name),
 						icon: () =>
 							h(RefreshCcw, {
 								class: 'h-4 w-4 text-gray-700',

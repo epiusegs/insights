@@ -8,6 +8,7 @@ import { getDrillDownQuery } from '../helpers'
 const props = defineProps<{
 	chart: {
 		operations: Operation[]
+		use_live_connection?: boolean
 		result: QueryResult
 	}
 	row: QueryResultRow
@@ -24,7 +25,8 @@ watch(
 			props.chart.operations,
 			props.chart.result,
 			props.row,
-			props.column
+			props.column,
+			props.chart.use_live_connection
 		)
 		if (query) {
 			drillDownQuery.value = query
@@ -57,13 +59,11 @@ watch(
 					:show-column-totals="true"
 					:show-filter-row="true"
 				>
-					<template #footer>
-						<div class="flex flex-shrink-0 items-center gap-3 border-t p-2">
-							<p class="tnum text-sm text-gray-600">
-								Showing {{ drillDownQuery.result.rows.length }} of
-								{{ drillDownQuery.result.totalRowCount }} rows
-							</p>
-						</div>
+					<template #footer-left>
+						<p class="tnum p-1 text-sm text-gray-600">
+							Showing {{ drillDownQuery.result.rows.length }} of
+							{{ drillDownQuery.result.totalRowCount }} rows
+						</p>
 					</template>
 				</DataTable>
 			</div>

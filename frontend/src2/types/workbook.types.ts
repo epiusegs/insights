@@ -9,6 +9,9 @@ export type WorkbookListItem = {
 	modified: string
 	created_from_now: string
 	modified_from_now: string
+	views: number
+	shared_with: string[]
+	shared_with_organization?: boolean
 }
 
 export type InsightsWorkbook = {
@@ -42,18 +45,19 @@ export type WorkbookChart = {
 		limit?: number
 	}
 	operations: Operation[]
+	use_live_connection?: boolean
+	calculated_measures?: Record<string, Measure>
 }
 
 export type WorkbookDashboard = {
 	name: string
 	title: string
 	items: WorkbookDashboardItem[]
+	is_public?: boolean
+	share_link?: string
 }
 
-export type WorkbookDashboardItem =
-	| WorkbookDashboardChart
-	| WorkbookDashboardFilter
-	| WorkbookDashboardText
+export type WorkbookDashboardItem = WorkbookDashboardChart
 
 export type Layout = {
 	i: string

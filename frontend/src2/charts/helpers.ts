@@ -18,7 +18,7 @@ import {
 	Operation,
 	QueryResult,
 	QueryResultColumn,
-	QueryResultRow
+	QueryResultRow,
 } from '../types/query.types'
 import { getColors } from './colors'
 
@@ -87,12 +87,13 @@ export function getLineChartOptions(config: LineChartConfig, result: QueryResult
 			const show_data_points = serie.show_data_points ?? config.y_axis.show_data_points
 			const show_area = serie.show_area ?? config.y_axis.show_area
 			const show_data_labels = serie.show_data_labels ?? config.y_axis.show_data_labels
+			const color = serie.color?.[0] || colors[idx]
 
 			return {
 				type: 'line',
 				name: c.name,
 				data: getSeriesData(c.name),
-				emphasis: { focus: 'series' },
+				color: color,
 				yAxisIndex: is_right_axis ? 1 : 0,
 				smooth: smooth ? 0.4 : false,
 				smoothMonotone: 'x',
@@ -106,8 +107,8 @@ export function getLineChartOptions(config: LineChartConfig, result: QueryResult
 					},
 				},
 				labelLayout: { hideOverlap: true },
-				itemStyle: { color: colors[idx] },
-				areaStyle: show_area ? getAreaStyle(colors[idx]) : undefined,
+				itemStyle: { color: color },
+				areaStyle: show_area ? getAreaStyle(color) : undefined,
 			}
 		}),
 		tooltip: getTooltip({
@@ -128,7 +129,7 @@ function getAreaStyle(color: string) {
 	}
 }
 
-export function getBarChartOptions(config: BarChartConfig, result: QueryResult) {
+export function getBarChartOptions(config: BarChartConfig, result: QueryResult, swapAxes = false) {
 	const _columns = result.columns
 	const _rows = result.rows
 
@@ -160,18 +161,20 @@ export function getBarChartOptions(config: BarChartConfig, result: QueryResult) 
 	}, {} as Record<string, number>)
 
 	const getSeriesData = (column: string) =>
-		sortedRows.map((r) => {
-			const x_value = r[config.x_axis.column_name]
-			const y_value = r[column]
-			const normalize = config.y_axis.normalize
-			if (!normalize) {
-				return [x_value, y_value]
-			}
+		sortedRows
+			.map((r) => {
+				const x_value = r[config.x_axis.column_name]
+				const y_value = r[column]
+				const normalize = config.y_axis.normalize
+				if (!normalize) {
+					return [x_value, y_value]
+				}
 
-			const total = total_per_x_value[x_value]
-			const normalized_value = total ? (y_value / total) * 100 : 0
-			return [x_value, normalized_value]
-		})
+				const total = total_per_x_value[x_value]
+				const normalized_value = total ? (y_value / total) * 100 : 0
+				return [x_value, normalized_value]
+			})
+			.map((d) => (swapAxes ? [d[1], d[0]] : d))
 
 	const colors = getColors()
 
@@ -180,8 +183,8 @@ export function getBarChartOptions(config: BarChartConfig, result: QueryResult) 
 		animationDuration: 700,
 		color: colors,
 		grid: getGrid({ show_legend }),
-		xAxis: xAxis,
-		yAxis: yAxis,
+		xAxis: swapAxes ? yAxis : xAxis,
+		yAxis: swapAxes ? xAxis : yAxis,
 		series: number_columns.map((c, idx) => {
 			const serie = getSerie(config, c.name)
 			const is_right_axis = serie.align === 'Right'
@@ -191,22 +194,24 @@ export function getBarChartOptions(config: BarChartConfig, result: QueryResult) 
 			const color = serie.color?.[0] || colors[idx]
 			const type = serie.type?.toLowerCase() || 'bar'
 
+			const data = getSeriesData(c.name)
+
 			return {
 				type,
 				stack: type === 'bar' && stack ? 'stack' : undefined,
 				name: c.name,
-				data: getSeriesData(c.name),
+				data: swapAxes ? data.reverse() : data,
 				color: color,
 				label: {
 					show: show_data_labels,
-					position: idx === number_columns.length - 1 ? 'top' : 'inside',
+					position: idx === number_columns.length - 1 ? (swapAxes ? 'right' : 'top') : 'inside',
 					formatter: (params: any) => {
-						return getShortNumber(params.value?.[1], 1)
+						const _val = swapAxes ? params.value?.[0] : params.value?.[1]
+						return getShortNumber(_val, 1)
 					},
 					fontSize: 11,
 				},
 				labelLayout: { hideOverlap: true },
-				emphasis: { focus: 'series' },
 				barMaxWidth: 60,
 				yAxisIndex: is_right_axis ? 1 : 0,
 				itemStyle: { color: color },
@@ -215,6 +220,7 @@ export function getBarChartOptions(config: BarChartConfig, result: QueryResult) 
 		tooltip: getTooltip({
 			xAxisIsDate,
 			granularity,
+			xySwapped: swapAxes,
 		}),
 		legend: getLegend(show_legend),
 	}
@@ -339,9 +345,7 @@ export function getDonutChartOptions(config: DountChartConfig, result: QueryResu
 				radius,
 				labelLine: { show: false },
 				label: { show: false },
-				emphasis: {
-					scaleSize: 5,
-				},
+				emphasis: { scaleSize: 5 },
 			},
 		],
 		legend: {
@@ -430,7 +434,7 @@ export function getFunnelChartOptions(config: DountChartConfig, result: QueryRes
 				left: 'center',
 				width: '60%',
 				height: '80%',
-				minSize: '0%',
+				minSize: '10px',
 				maxSize: '100%',
 				sort: 'descending',
 				label: {
@@ -442,14 +446,25 @@ export function getFunnelChartOptions(config: DountChartConfig, result: QueryRes
 						return `${params.name} (${percent}%)`
 					},
 				},
-				gap: 2,
+				gap: 6,
 				data: values.map((value, index) => ({
 					name: labels[index],
 					value: value,
 					itemStyle: {
 						color: colors[index],
 						borderColor: colors[index],
-						borderWidth: 1,
+						borderWidth: 4,
+						borderCap: 'round',
+						borderJoin: 'round',
+					},
+					emphasis: {
+						itemStyle: {
+							color: colors[index],
+							borderColor: colors[index],
+							borderWidth: 6,
+							borderCap: 'round',
+							borderJoin: 'round',
+						},
 					},
 				})),
 			},
@@ -475,7 +490,7 @@ function getTooltip(options: any = {}) {
 		formatter: (params: Object | Array<Object>) => {
 			if (!Array.isArray(params)) {
 				const p = params as any
-				const value = p.value[1]
+				const value = options.xySwapped ? p.value[0] : p.value[1]
 				const formatted = isNaN(value) ? value : formatNumber(value)
 				return `
 					<div class="flex items-center justify-between gap-5">
@@ -486,8 +501,8 @@ function getTooltip(options: any = {}) {
 			}
 			if (Array.isArray(params)) {
 				const t = params.map((p, idx) => {
-					const xValue = p.value[0]
-					const yValue = p.value[1]
+					const xValue = options.xySwapped ? p.value[1] : p.value[0]
+					const yValue = options.xySwapped ? p.value[0] : p.value[1]
 					const formattedX =
 						options.xAxisIsDate && options.granularity
 							? getFormattedDate(xValue, options.granularity)
@@ -534,7 +549,8 @@ export function getDrillDownQuery(
 	operations: Operation[],
 	result: QueryResult,
 	row: QueryResultRow,
-	col: QueryResultColumn
+	col: QueryResultColumn,
+	use_live_connection = true
 ) {
 	if (!result.columns?.length || !row || !col) return
 
@@ -586,6 +602,7 @@ export function getDrillDownQuery(
 
 	const query = useQuery({ name: getUniqueId(), operations: [] })
 	query.autoExecute = false
+	query.doc.use_live_connection = use_live_connection
 
 	query.setOperations(copy(operations))
 	const summarizeIndex = query.doc.operations.findIndex((op) => op.type === 'summarize')

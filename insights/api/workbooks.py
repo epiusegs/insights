@@ -8,21 +8,22 @@ from insights.insights.doctype.insights_data_source_v3.ibis_utils import (
     execute_ibis_query,
     get_columns_from_schema,
 )
+from insights.utils import DocShare
 
 
 @insights_whitelist()
-def fetch_query_results(operations, use_live_connection=True):
+def fetch_query_results(operations, limit=100, use_live_connection=True):
     results = []
     ibis_query = IbisQueryBuilder().build(operations, use_live_connection)
     if ibis_query is None:
         return
 
     columns = get_columns_from_schema(ibis_query.schema())
-    results = execute_ibis_query(ibis_query, cache=True, cache_expiry=60 * 5)
+    results = execute_ibis_query(ibis_query, limit=limit, cache_expiry=60 * 5)
     results = results.to_dict(orient="records")
 
     count_query = ibis_query.aggregate(count=_.count())
-    count_results = execute_ibis_query(count_query, cache=True, cache_expiry=60 * 5)
+    count_results = execute_ibis_query(count_query, cache_expiry=60 * 5)
     total_count = count_results.values[0][0]
 
     return {
@@ -39,7 +40,7 @@ def download_query_results(operations, use_live_connection=True):
     if ibis_query is None:
         return
 
-    results = execute_ibis_query(ibis_query, limit=100_00_00)
+    results = execute_ibis_query(ibis_query, cache=False, limit=10_00_000)
     return results.to_csv(index=False)
 
 
@@ -58,7 +59,7 @@ def get_distinct_column_values(
         .distinct()
         .head(limit)
     )
-    result = execute_ibis_query(values_query, cache=True)
+    result = execute_ibis_query(values_query, cache_expiry=24 * 60 * 60)
     return result[column_name].tolist()
 
 
@@ -70,9 +71,13 @@ def get_columns_for_selection(operations, use_live_connection=True):
 
 
 @insights_whitelist()
-def get_workbooks():
-    return frappe.get_list(
+def get_workbooks(search_term=None, limit=100):
+    workbooks = frappe.get_list(
         "Insights Workbook",
+        or_filters={
+            "owner": ["like", f"%{search_term}%" if search_term else "%"],
+            "title": ["like", f"%{search_term}%" if search_term else "%"],
+        },
         fields=[
             "name",
             "title",
@@ -80,7 +85,54 @@ def get_workbooks():
             "creation",
             "modified",
         ],
+        limit=limit,
     )
+    # FIX: figure out how to use frappe.qb while respecting permissions
+    # TODO: use frappe.qb to get the view count
+    workbook_names = [workbook["name"] for workbook in workbooks]
+    workbook_views = frappe.get_all(
+        "View Log",
+        filters={
+            "reference_doctype": "Insights Workbook",
+            "reference_name": ["in", workbook_names],
+        },
+        fields=["reference_name", "name"],
+    )
+    for workbook in workbooks:
+        views = [
+            view
+            for view in workbook_views
+            if str(view["reference_name"]) == str(workbook["name"])
+        ]
+        workbook["views"] = len(views)
+
+    for workbook in workbooks:
+        organization_has_access = frappe.db.exists(
+            "DocShare",
+            {
+                "share_doctype": "Insights Workbook",
+                "share_name": workbook["name"],
+                "everyone": 1,
+                "read": 1,
+            },
+        )
+        if organization_has_access:
+            workbook["shared_with_organization"] = True
+            continue
+
+        shared_with = frappe.get_all(
+            "DocShare",
+            filters={
+                "share_doctype": "Insights Workbook",
+                "share_name": workbook["name"],
+                "user": ["!=", workbook["owner"]],
+                "read": 1,
+            },
+            pluck="user",
+        )
+        workbook["shared_with"] = shared_with
+
+    return workbooks
 
 
 @insights_whitelist()
@@ -91,7 +143,7 @@ def get_share_permissions(workbook_name):
     DocShare = frappe.qb.DocType("DocShare")
     User = frappe.qb.DocType("User")
 
-    share_permissions = (
+    user_permissions = (
         frappe.qb.from_(DocShare)
         .left_join(User)
         .on(DocShare.user == User.name)
@@ -107,7 +159,7 @@ def get_share_permissions(workbook_name):
         .run(as_dict=True)
     )
     owner = frappe.db.get_value("Insights Workbook", workbook_name, "owner")
-    share_permissions.append(
+    user_permissions.append(
         {
             "user": owner,
             "full_name": frappe.get_value("User", owner, "full_name"),
@@ -115,48 +167,57 @@ def get_share_permissions(workbook_name):
             "write": 1,
         }
     )
-    return share_permissions
+
+    public_docshare = frappe.db.get_value(
+        "DocShare",
+        filters={
+            "share_doctype": "Insights Workbook",
+            "share_name": workbook_name,
+            "everyone": 1,
+        },
+        fieldname=["read", "write"],
+        as_dict=True,
+    )
+    organization_access = None
+    if public_docshare:
+        organization_access = "edit" if public_docshare["write"] else "view"
+
+    return {
+        "user_permissions": user_permissions,
+        "organization_access": organization_access,
+    }
 
 
 @insights_whitelist()
-def update_share_permissions(workbook_name, permissions):
+def update_share_permissions(
+    workbook_name, user_permissions, organization_access: str | None = None
+):
     if not frappe.has_permission("Insights Workbook", ptype="share", doc=workbook_name):
         frappe.throw(_("You do not have permission to share this workbook"))
 
-    perm_exists = lambda user: frappe.db.exists(
-        "DocShare",
-        {
-            "share_doctype": "Insights Workbook",
-            "share_name": workbook_name,
-            "user": user,
-        },
-    )
+    for permission in user_permissions:
+        doc = DocShare.get_or_create_doc(
+            share_doctype="Insights Workbook",
+            share_name=workbook_name,
+            user=permission["user"],
+        )
+        doc.read = permission["read"]
+        doc.write = permission["write"]
+        doc.notify_by_email = 0
+        doc.save()
 
-    for permission in permissions:
-        if not perm_exists(permission["user"]):
-            doc = frappe.new_doc("DocShare")
-            doc.update(
-                {
-                    "share_doctype": "Insights Workbook",
-                    "share_name": workbook_name,
-                    "user": permission["user"],
-                    "read": permission["read"],
-                    "write": permission["write"],
-                }
-            )
-            doc.save()
-        else:
-            doc = frappe.get_doc(
-                "DocShare",
-                {
-                    "share_doctype": "Insights Workbook",
-                    "share_name": workbook_name,
-                    "user": permission["user"],
-                },
-            )
-            doc.read = permission["read"]
-            doc.write = permission["write"]
-            doc.save()
+    public_docshare = DocShare.get_or_create_doc(
+        share_doctype="Insights Workbook",
+        share_name=workbook_name,
+        everyone=1,
+    )
+    if organization_access:
+        public_docshare.read = 1
+        public_docshare.write = organization_access == "edit"
+        public_docshare.notify_by_email = 0
+        public_docshare.save()
+    elif public_docshare.name:
+        public_docshare.delete()
 
 
 @frappe.whitelist(allow_guest=True)

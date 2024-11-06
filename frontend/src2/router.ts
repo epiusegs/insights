@@ -15,14 +15,14 @@ const routes = [
 		component: () => import('./home/Home.vue'),
 	},
 	{
-		path: '/dashboard',
+		path: '/dashboards',
 		name: 'DashboardList',
 		component: () => import('./dashboard/DashboardList.vue'),
 	},
 	{
 		props: true,
 		name: 'Dashboard',
-		path: '/dashboard/:name',
+		path: '/dashboards/:name',
 		component: () => import('./dashboard/Dashboard.vue'),
 	},
 	{
@@ -95,6 +95,16 @@ const routes = [
 		name: 'SharedChart',
 		path: '/shared/chart/:chart_name',
 		component: () => import('./charts/SharedChart.vue'),
+		meta: {
+			hideSidebar: true,
+			isGuestView: true,
+		},
+	},
+	{
+		props: true,
+		name: 'SharedDashboard',
+		path: '/shared/dashboard/:dashboard_name',
+		component: () => import('./dashboard/SharedDashboard.vue'),
 		meta: {
 			hideSidebar: true,
 			isGuestView: true,

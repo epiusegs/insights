@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { useMagicKeys, whenever } from '@vueuse/core'
-import { Badge } from 'frappe-ui'
 import { AlertOctagon } from 'lucide-vue-next'
 import { computed, provide, watchEffect } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import ContentEditable from '../components/ContentEditable.vue'
-import Navbar from '../components/Navbar.vue'
 import useWorkbook, { workbookKey } from './workbook'
-import WorkbookNavbarActions from './WorkbookNavbarActions.vue'
+import WorkbookNavbar from './WorkbookNavbar.vue'
 import WorkbookSidebar from './WorkbookSidebar.vue'
 import WorkbookTabSwitcher from './WorkbookTabSwitcher.vue'
 
@@ -54,28 +51,7 @@ watchEffect(() => {
 
 <template>
 	<div class="flex h-full w-full flex-col">
-		<Navbar>
-			<template #center>
-				<div class="relative flex gap-3">
-					<ContentEditable
-						class="rounded-sm font-medium !text-gray-800 focus:ring-2 focus:ring-gray-700 focus:ring-offset-4"
-						v-model="workbook.doc.title"
-						placeholder="Untitled Workbook"
-					></ContentEditable>
-					<Badge
-						v-if="workbook.islocal || workbook.isdirty"
-						class="absolute -right-[4.5rem]"
-						size="sm"
-						theme="orange"
-					>
-						Unsaved
-					</Badge>
-				</div>
-			</template>
-			<template #right>
-				<WorkbookNavbarActions />
-			</template>
-		</Navbar>
+		<WorkbookNavbar />
 		<div
 			class="relative flex w-full flex-1 overflow-hidden bg-gray-50"
 			:class="workbook.showSidebar ? 'flex-row' : 'flex-col'"

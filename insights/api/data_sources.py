@@ -335,7 +335,7 @@ def get_data_source_table(data_source: str, table_name: str):
     ds = frappe.get_doc("Insights Data Source v3", data_source)
     db = ds._get_ibis_backend()
     q = db.table(table_name).head(100)
-    data = execute_ibis_query(q, cache=True, cache_expiry=24 * 60 * 60)
+    data = execute_ibis_query(q, cache_expiry=24 * 60 * 60)
 
     return {
         "table_name": table_name,
@@ -387,6 +387,14 @@ def update_data_source_tables(data_source: str):
 def get_table_links(data_source: str, left_table: str, right_table: str):
     check_table_permission(data_source, left_table)
     return InsightsTableLinkv3.get_links(data_source, left_table, right_table)
+
+
+@insights_whitelist()
+@validate_type
+def update_table_links(data_source: str):
+    check_data_source_permission(data_source)
+    ds = frappe.get_doc("Insights Data Source v3", data_source)
+    ds.update_table_links(force=True)
 
 
 def make_data_source(data_source):

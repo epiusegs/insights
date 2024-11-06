@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMagicKeys, watchDebounced, whenever } from '@vueuse/core'
-import { ImageDown, RefreshCcw, Share2 } from 'lucide-vue-next'
+import { ImageDown, RefreshCcw, Share2, XIcon } from 'lucide-vue-next'
 import { onBeforeUnmount, provide, ref } from 'vue'
 import InlineFormControlLabel from '../components/InlineFormControlLabel.vue'
 import LoadingOverlay from '../components/LoadingOverlay.vue'
@@ -16,6 +16,7 @@ import ChartShareDialog from './components/ChartShareDialog.vue'
 import ChartSortConfig from './components/ChartSortConfig.vue'
 import ChartTypeSelector from './components/ChartTypeSelector.vue'
 import CollapsibleSection from './components/CollapsibleSection.vue'
+import { Badge } from 'frappe-ui'
 
 const props = defineProps<{ chart: WorkbookChart; queries: WorkbookQuery[] }>()
 
@@ -77,14 +78,16 @@ const showShareDialog = ref(false)
 					:title="chart.doc.title"
 					:chart_type="chart.doc.chart_type"
 					:config="chart.doc.config"
-					:operations="chart.doc.operations || chart.dataQuery.operations || []"
+					:operations="chart.doc.operations || chart.dataQuery.doc.operations || []"
+					:use_live_connection="chart.doc.use_live_connection"
 					:result="chart.dataQuery.result"
+					:loading="chart.dataQuery.executing"
 				/>
 			</div>
 			<ChartBuilderTable v-if="chart.dataQuery.result.executedSQL" />
 		</div>
 		<div
-			class="relative z-[1] flex w-[17rem] flex-shrink-0 flex-col divide-y overflow-y-auto bg-white shadow"
+			class="relative z-[1] flex w-[19rem] flex-shrink-0 flex-col divide-y overflow-y-auto bg-white shadow"
 		>
 			<CollapsibleSection title="Chart">
 				<div class="flex flex-col gap-3">
@@ -98,7 +101,12 @@ const showShareDialog = ref(false)
 
 			<ChartConfigForm v-if="chart.doc.query" :chart="chart" />
 
-			<CollapsibleSection title="Filter" collapsed>
+			<CollapsibleSection title="Filters" collapsed>
+				<template #title-suffix v-if="chart.doc.config.filters?.filters.length">
+					<Badge size="sm" theme="orange" type="info" class="mt-0.5">
+						<span class="tnum"> {{ chart.doc.config.filters.filters.length }}</span>
+					</Badge>
+				</template>
 				<ChartFilterConfig
 					v-model="chart.doc.config.filters"
 					:column-options="chart.baseQuery.result?.columnOptions || []"
@@ -106,6 +114,11 @@ const showShareDialog = ref(false)
 			</CollapsibleSection>
 
 			<CollapsibleSection title="Sort" collapsed>
+				<template #title-suffix v-if="chart.doc.config.order_by?.length">
+					<Badge size="sm" theme="orange" type="info" class="mt-0.5">
+						<span class="tnum"> {{ chart.doc.config.order_by?.length }}</span>
+					</Badge>
+				</template>
 				<ChartSortConfig
 					v-model="chart.doc.config.order_by"
 					:column-options="chart.dataQuery.result?.columnOptions || []"
@@ -118,6 +131,13 @@ const showShareDialog = ref(false)
 
 			<CollapsibleSection title="Actions" class="!border-b">
 				<div class="flex flex-col gap-2">
+					<Button @click="chart.resetConfig" class="w-full">
+						<template #prefix>
+							<XIcon class="h-4 text-gray-700" stroke-width="1.5" />
+						</template>
+						Reset Options
+					</Button>
+
 					<Button @click="chart.refresh([], true)" class="w-full">
 						<template #prefix>
 							<RefreshCcw class="h-4 text-gray-700" stroke-width="1.5" />

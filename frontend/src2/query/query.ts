@@ -255,16 +255,19 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 		}
 
 		query.executing = true
+		const operations = query.getOperationsForExecution()
+		const limit = operations.find((op) => op.type === 'limit')?.limit
 		return call('insights.api.workbooks.fetch_query_results', {
 			use_live_connection: query.doc.use_live_connection,
-			operations: query.getOperationsForExecution(),
+			operations,
+			limit,
 		})
 			.then((response: any) => {
 				if (!response) return
 				query.result.executedSQL = response.sql
 				query.result.columns = response.columns
 				query.result.rows = response.rows
-				query.result.formattedRows = getFormattedRows(query)
+				query.result.formattedRows = getFormattedRows(query.result, query.doc.operations)
 				query.result.totalRowCount = response.total_row_count
 				query.result.columnOptions = query.result.columns.map((column) => ({
 					label: column.name,
@@ -309,6 +312,10 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 			} else {
 				query.setOperations([])
 				query.addSource(args)
+			}
+
+			if (query.doc.title?.match(/Query \d+/) && 'table_name' in args.table) {
+				query.doc.title = args.table.table_name
 			}
 
 			if (args.table.type == 'query') {
@@ -586,33 +593,44 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 	}
 
 	function downloadResults() {
-		return call('insights.api.workbooks.download_query_results', {
-			use_live_connection: query.doc.use_live_connection,
-			operations: query.getOperationsForExecution(),
-		}).then((csv_data: string) => {
-			const blob = new Blob([csv_data], { type: 'text/csv' })
-			const url = window.URL.createObjectURL(blob)
-			const a = document.createElement('a')
-			a.setAttribute('hidden', '')
-			a.setAttribute('href', url)
-			a.setAttribute('download', `${query.doc.title || 'data'}.csv`)
-			document.body.appendChild(a)
-			a.click()
-			document.body.removeChild(a)
+		const _downloadResults = () => {
+			return call('insights.api.workbooks.download_query_results', {
+				use_live_connection: query.doc.use_live_connection,
+				operations: query.getOperationsForExecution(),
+			}).then((csv_data: string) => {
+				const blob = new Blob([csv_data], { type: 'text/csv' })
+				const url = window.URL.createObjectURL(blob)
+				const a = document.createElement('a')
+				a.setAttribute('hidden', '')
+				a.setAttribute('href', url)
+				a.setAttribute('download', `${query.doc.title || 'data'}.csv`)
+				document.body.appendChild(a)
+				a.click()
+				document.body.removeChild(a)
+			})
+		}
+
+		confirmDialog({
+			title: 'Download Results',
+			message:
+				'This action will download the datatable results as a CSV file. Do you want to proceed?',
+			primaryActionLabel: 'Yes',
+			onSuccess: _downloadResults,
 		})
 	}
 
 	function getDistinctColumnValues(column: string, search_term: string = '', limit: number = 20) {
 		const operationsForExecution = query.getOperationsForExecution()
-		const operations =
-			query.activeEditIndex > -1
-				? // when editing a filter, get distinct values from the operations before the filter
-				  operationsForExecution.slice(0, query.activeEditIndex)
-				: operationsForExecution
+		if (query.activeEditIndex > -1) {
+			// remove the active edit operation from the operations
+			// we can't use activeEditIndex because the operations for execution may have more operations (after query table resolution)
+			const idx = operationsForExecution.findIndex((op) => op === query.activeEditOperation)
+			operationsForExecution.splice(idx, 1)
+		}
 
 		return call('insights.api.workbooks.get_distinct_column_values', {
 			use_live_connection: query.doc.use_live_connection,
-			operations: operations,
+			operations: operationsForExecution,
 			column_name: column,
 			search_term,
 			limit,
@@ -621,15 +639,20 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 
 	function getColumnsForSelection() {
 		const operationsForExecution = query.getOperationsForExecution()
-		const operations =
-			query.activeEditOperation.type === 'select' || query.activeEditOperation.type === 'summarize'
-				? operationsForExecution.slice(0, query.activeEditIndex)
-				: operationsForExecution
+		if (
+			query.activeEditOperation.type === 'select' ||
+			query.activeEditOperation.type === 'summarize'
+		) {
+			// remove the active edit operation from the operations
+			// we can't use activeEditIndex because the operations for execution may have more operations (after query table resolution)
+			const idx = operationsForExecution.findIndex((op) => op === query.activeEditOperation)
+			operationsForExecution.splice(idx, 1)
+		}
 
 		const method = 'insights.api.workbooks.get_columns_for_selection'
 		return call(method, {
 			use_live_connection: query.doc.use_live_connection,
-			operations,
+			operations: operationsForExecution,
 		})
 	}
 

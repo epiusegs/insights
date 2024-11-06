@@ -41,7 +41,7 @@ class InsightsTablev3(Document):
             doc.label = table
             table_docs.append(doc)
 
-        bulk_insert("Insights Table v3", table_docs)
+        bulk_insert("Insights Table v3", table_docs, ignore_duplicates=True)
 
     @staticmethod
     def get_ibis_table(data_source, table_name, use_live_connection=False):
@@ -54,7 +54,7 @@ class InsightsTablev3(Document):
 
         if not use_live_connection:
             wt = Warehouse().get_table(data_source, table_name)
-            t = wt.get_ibis_table(import_if_not_exists=False)
+            t = wt.get_ibis_table(import_if_not_exists=True)
         else:
             ds = InsightsDataSourcev3.get_doc(data_source)
             t = ds.get_ibis_table(table_name)
@@ -63,10 +63,10 @@ class InsightsTablev3(Document):
         return t
 
     @frappe.whitelist()
-    def import_to_warehouse(self, overwrite=False):
+    def import_to_warehouse(self):
         frappe.only_for("Insights Admin")
         wt = Warehouse().get_table(self.data_source, self.table)
-        wt.import_remote_table(overwrite=overwrite)
+        wt.enqueue_import()
 
 
 def get_table_name(data_source, table):

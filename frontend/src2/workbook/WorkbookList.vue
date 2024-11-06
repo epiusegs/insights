@@ -1,38 +1,83 @@
 <script setup lang="tsx">
-import { Avatar, Breadcrumbs, ListView } from 'frappe-ui'
-import { PlusIcon, SearchIcon } from 'lucide-vue-next'
+import { Avatar, Breadcrumbs, ListView, Badge } from 'frappe-ui'
+import { Building2, Eye, Lock, PlusIcon, SearchIcon, Shield } from 'lucide-vue-next'
 import { computed, ref, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { WorkbookListItem } from '../types/workbook.types'
 import useUserStore from '../users/users'
 import { newWorkbookName } from './workbook'
 import useWorkbooks from './workbooks'
+import { wheneverChanges } from '../helpers'
+import AvatarGroup from './AvatarGroup.vue'
 
 const router = useRouter()
 const workbookStore = useWorkbooks()
-workbookStore.getWorkbooks()
+const workbooks = computed(() => workbookStore.workbooks)
 
 const searchQuery = ref('')
-const filteredWorkbooks = computed(() => {
-	if (!searchQuery.value) {
-		return workbookStore.workbooks
-	}
-	return workbookStore.workbooks.filter((workbook) =>
-		workbook.title.toLowerCase().includes(searchQuery.value.toLowerCase())
-	)
+wheneverChanges(searchQuery, () => workbookStore.getWorkbooks(searchQuery.value), {
+	debounce: 300,
+	immediate: true,
 })
 
 const userStore = useUserStore()
 const listOptions = ref({
 	columns: [
-		{ label: 'Title', key: 'title' },
+		{
+			label: 'Title',
+			key: 'title',
+			width: 4,
+		},
+		{
+			label: 'Access',
+			key: 'shared_with',
+			width: 2,
+			getLabel: (props: any) => {
+				const workbook = props.row as WorkbookListItem
+				if (workbook.shared_with_organization) {
+					return 'Everyone'
+				}
+				if (workbook.shared_with.length === 0) {
+					return 'Private'
+				}
+				return workbook.shared_with.length > 1
+					? `${workbook.shared_with.length} people`
+					: userStore.getName(workbook.shared_with[0])
+			},
+			prefix: (props: any) => {
+				const workbook = props.row as WorkbookListItem
+				if (workbook.shared_with_organization) {
+					return <Building2 class="h-3.5 w-3.5 text-blue-500" />
+				}
+				if (workbook.shared_with.length === 0) {
+					return <Lock class="h-3.5 w-3.5 text-orange-500" />
+				}
+				return <Shield class="h-3.5 w-3.5 text-green-500" />
+			},
+		},
+		{
+			label: 'Views',
+			key: 'views',
+			width: 1.5,
+			getLabel: (props: any) => {},
+			prefix: (props: any) => {
+				const workbook = props.row as WorkbookListItem
+				return (
+					<div class="flex gap-1">
+						<Eye class="h-3.5 w-3.5 text-gray-600" stroke-width="1.5" />
+						<span class="font-mono text-sm text-gray-700">{workbook.views}</span>
+					</div>
+				)
+			},
+		},
 		{
 			label: 'Owner',
 			key: 'owner',
+			width: 2,
 			getLabel(props: any) {
 				const workbook = props.row as WorkbookListItem
 				const user = userStore.getUser(workbook.owner)
-				return user?.full_name
+				return user?.full_name || workbook.owner
 			},
 			prefix: (props: any) => {
 				const workbook = props.row as WorkbookListItem
@@ -40,9 +85,9 @@ const listOptions = ref({
 				return <Avatar size="md" label={workbook.owner} image={user?.user_image} />
 			},
 		},
-		{ label: 'Modified', key: 'modified_from_now' },
+		{ label: 'Modified', key: 'modified_from_now', width: 2 },
 	],
-	rows: filteredWorkbooks,
+	rows: workbooks,
 	rowKey: 'name',
 	options: {
 		showTooltip: false,
@@ -72,7 +117,7 @@ watchEffect(() => {
 </script>
 
 <template>
-	<header class="mb-2 flex h-12 items-center justify-between border-b py-2.5 pl-5 pr-2">
+	<header class="flex h-12 items-center justify-between border-b py-2.5 pl-5 pr-2">
 		<Breadcrumbs :items="[{ label: 'Workbooks', route: '/workbook' }]" />
 		<div class="flex items-center gap-2">
 			<Button label="New Workbook" variant="solid" @click="openNewWorkbook">
@@ -83,9 +128,14 @@ watchEffect(() => {
 		</div>
 	</header>
 
-	<div class="mb-4 flex h-full flex-col gap-2 overflow-auto px-4">
+	<div class="mb-4 flex h-full flex-col gap-3 overflow-auto px-5 py-3">
 		<div class="flex gap-2 overflow-visible py-1">
-			<FormControl placeholder="Search by Title" v-model="searchQuery" :debounce="300">
+			<FormControl
+				placeholder="Search by Title"
+				v-model="searchQuery"
+				:debounce="300"
+				autocomplete="off"
+			>
 				<template #prefix>
 					<SearchIcon class="h-4 w-4 text-gray-500" />
 				</template>

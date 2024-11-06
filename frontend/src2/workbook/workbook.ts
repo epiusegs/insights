@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import useChart from '../charts/chart'
 import { handleOldYAxisConfig } from '../charts/helpers'
 import useDashboard from '../dashboard/dashboard'
-import { getUniqueId, safeJSONParse, wheneverChanges } from '../helpers'
+import { getUniqueId, safeJSONParse, showErrorToast, wheneverChanges } from '../helpers'
 import { confirmDialog } from '../helpers/confirm_dialog'
 import useDocumentResource from '../helpers/resource'
 import { createToast } from '../helpers/toasts'
@@ -14,7 +14,7 @@ import { Join, Source } from '../types/query.types'
 import type {
 	InsightsWorkbook,
 	WorkbookChart,
-	WorkbookSharePermission,
+	WorkbookSharePermission as WorkbookUserPermission,
 } from '../types/workbook.types'
 
 export default function useWorkbook(name: string) {
@@ -141,31 +141,39 @@ export default function useWorkbook(name: string) {
 	const isOwner = computed(() => workbook.doc.owner === session.user?.email)
 	const canShare = computed(() => isOwner.value)
 
-	async function getSharePermissions(): Promise<WorkbookSharePermission[]> {
+	async function getSharePermissions(): Promise<UpdateSharePermissionsArgs> {
 		const method = 'insights.api.workbooks.get_share_permissions'
 		return call(method, { workbook_name: workbook.name }).then((permissions: any) => {
-			return permissions.map((p: any) => {
-				return {
-					email: p.user,
-					full_name: p.full_name,
-					access: p.read ? (p.write ? 'edit' : 'view') : undefined,
-				}
-			})
+			return {
+				user_permissions: permissions.user_permissions.map((p: any) => {
+					return {
+						email: p.user,
+						full_name: p.full_name,
+						access: p.read ? (p.write ? 'edit' : 'view') : undefined,
+					}
+				}),
+				organization_access: permissions.organization_access,
+			}
 		})
 	}
 
-	async function updateSharePermissions(permissions: WorkbookSharePermission[]) {
+	type UpdateSharePermissionsArgs = {
+		user_permissions: WorkbookUserPermission[]
+		organization_access?: 'view' | 'edit'
+	}
+	async function updateSharePermissions(args: UpdateSharePermissionsArgs) {
 		const method = 'insights.api.workbooks.update_share_permissions'
 		return call(method, {
 			workbook_name: workbook.name,
-			permissions: permissions.map((p) => {
+			organization_access: args.organization_access,
+			user_permissions: args.user_permissions.map((p) => {
 				return {
 					user: p.email,
 					read: p.access === 'view',
 					write: p.access === 'edit',
 				}
 			}),
-		})
+		}).catch(showErrorToast)
 	}
 
 	function deleteWorkbook() {
@@ -274,7 +282,7 @@ function getWorkbookResource(name: string) {
 							logical_operator: 'And',
 					  }
 				chart.config.order_by = chart.config.order_by || []
-				chart.config.limit = 100
+				chart.config.limit = chart.config.limit || 100
 
 				if ('y_axis' in chart.config && Array.isArray(chart.config.y_axis)) {
 					// @ts-ignore
@@ -284,6 +292,8 @@ function getWorkbookResource(name: string) {
 			return doc
 		},
 	})
+
+	workbook.onAfterLoad(() => workbook.call('track_view').catch(() => {}))
 	return workbook
 }
 

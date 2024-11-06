@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Breadcrumbs } from 'frappe-ui'
-import { RefreshCcw } from 'lucide-vue-next'
+import { ExternalLink, RefreshCcw } from 'lucide-vue-next'
 import { provide } from 'vue'
+import { useRouter } from 'vue-router'
 import { waitUntil } from '../helpers'
 import useWorkbook from '../workbook/workbook'
 import useDashboard from './dashboard'
@@ -23,14 +24,19 @@ const dashboard = useDashboard(
 )
 provide('dashboard', dashboard)
 dashboard.refresh()
+
+const router = useRouter()
+function openWorkbook() {
+	router.push(`/workbook/${workbook.doc.name}`)
+}
 </script>
 
 <template>
 	<header class="flex h-12 items-center justify-between border-b py-2.5 pl-5 pr-2">
 		<Breadcrumbs
 			:items="[
-				{ label: 'Dashboards', route: '/dashboard' },
-				{ label: dashboard.doc.title, route: `/dashboard/${dashboard.doc.name}` },
+				{ label: 'Dashboards', route: '/dashboards' },
+				{ label: dashboard.doc.title, route: `/dashboards/${dashboard.doc.name}` },
 			]"
 		/>
 		<div class="flex items-center gap-2">
@@ -44,10 +50,15 @@ dashboard.refresh()
 					<RefreshCcw class="h-4 w-4 text-gray-700" stroke-width="1.5" />
 				</template>
 			</Button>
+			<Button variant="outline" @click="openWorkbook" label="Workbook">
+				<template #prefix>
+					<ExternalLink class="h-4 w-4 text-gray-700" stroke-width="1.5" />
+				</template>
+			</Button>
 		</div>
 	</header>
 
-	<div class="relative flex h-full w-full divide-x overflow-hidden">
+	<div class="relative flex h-full w-full overflow-hidden">
 		<div class="flex-1 overflow-y-auto p-4">
 			<VueGridLayout
 				v-if="dashboard.doc.items.length > 0"
@@ -55,18 +66,9 @@ dashboard.refresh()
 				:cols="20"
 				:disabled="true"
 				:modelValue="dashboard.doc.items.map((item) => item.layout)"
-				@update:modelValue="
-					(newLayout) => {
-						dashboard.doc.items.forEach((item, idx) => {
-							item.layout = newLayout[idx]
-						})
-					}
-				"
 			>
 				<template #item="{ index }">
-					<div class="relative h-full w-full p-2 [&>div:first-child]:h-full">
-						<DashboardItem :index="index" :item="dashboard.doc.items[index]" />
-					</div>
+					<DashboardItem :index="index" :item="dashboard.doc.items[index]" />
 				</template>
 			</VueGridLayout>
 		</div>

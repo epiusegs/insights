@@ -8,7 +8,6 @@ import pandas as pd
 from frappe.utils.data import flt
 from frappe.utils.safe_exec import safe_eval, safe_exec
 from ibis import _
-from ibis import selectors as s
 from ibis.expr.datatypes import DataType
 from ibis.expr.operations.relations import DatabaseTable, Field
 from ibis.expr.types import Expr
@@ -81,11 +80,12 @@ class IbisQueryBuilder:
         right_table = self.get_right_table(join_args)
         join_condition = self.translate_join_condition(join_args, right_table)
         join_type = "outer" if join_args.join_type == "full" else join_args.join_type
+        right_table = self.rename_duplicate_columns(right_table)
         return self.query.join(
             right_table,
             join_condition,
             how=join_type,
-        ).select(~s.endswith("right"))
+        )
 
     def get_table_or_query(self, table_args):
         _table = None
@@ -109,13 +109,16 @@ class IbisQueryBuilder:
         if not join_args.select_columns:
             return right_table
 
-        select_columns = [col.column_name for col in join_args.select_columns]
+        select_columns = set()
+
+        for col in join_args.select_columns:
+            select_columns.add(col.column_name)
 
         if join_args.right_column:
-            select_columns.append(join_args.right_column.column_name)
+            select_columns.add(join_args.right_column.column_name)
 
         if join_args.join_condition and join_args.join_condition.right_column:
-            select_columns.append(join_args.join_condition.right_column.column_name)
+            select_columns.add(join_args.join_condition.right_column.column_name)
 
         if join_args.join_condition and join_args.join_condition.join_expression:
             expression = self.evaluate_expression(
@@ -128,7 +131,7 @@ class IbisQueryBuilder:
             right_table_columns = self.get_columns_from_expression(
                 expression, table=join_args.table.table_name
             )
-            select_columns.extend(right_table_columns)
+            select_columns.update(right_table_columns)
 
         return right_table.select(select_columns)
 
@@ -178,27 +181,59 @@ class IbisQueryBuilder:
                 join_args.right_column or join_args.join_condition.right_column,
             )
 
+    def rename_duplicate_columns(self, right_table):
+        query: IbisQuery = self.query
+        query_columns = set(query.columns)
+        right_table_columns = set(right_table.columns)
+        right_table_name = get_ibis_table_name(right_table)
+        right_table_name = frappe.scrub(right_table_name)
+
+        duplicate_columns = query_columns.intersection(right_table_columns)
+        if not duplicate_columns:
+            return right_table
+
+        def is_conflicting(col):
+            return col in query_columns or col in right_table_columns
+
+        def get_new_name(col):
+            new_name = f"{right_table_name}.{col}"
+            if not is_conflicting(new_name):
+                return new_name
+
+            n = 1
+            while is_conflicting(f"{new_name}_{n}"):
+                n += 1
+                if n > 20:
+                    frappe.throw("Too many duplicate columns")
+
+            return f"{new_name}_{n}"
+
+        return right_table.rename(
+            **{get_new_name(col): col for col in duplicate_columns}
+        )
+
     def apply_union(self, union_args):
         other_table = self.get_table_or_query(union_args.table)
 
-        # Ensure both tables have the same columns
-        # Add missing columns with None values
-        for col, dtype in self.query.schema().items():
-            if col not in other_table.columns:
-                other_table = other_table.mutate(
-                    **{
-                        col: ibis.literal(None).cast(dtype).name(col),
-                    }
-                )
+        current_columns = set(self.query.columns)
+        other_columns = set(other_table.columns)
+        common_columns = current_columns.intersection(other_columns)
 
-        for col, dtype in other_table.schema().items():
-            if col not in self.query.columns:
-                self.query = self.query.mutate(
-                    **{
-                        col: ibis.literal(None).cast(dtype).name(col),
-                    }
-                )
+        if not common_columns:
+            frappe.throw(
+                "Both tables must have at least one common column to perform union",
+                title="Cannot Perform Union",
+            )
 
+        # ensure columns have the same data types
+        for col in common_columns:
+            left_col_type = self.query.schema()[col]
+            right_col_type = other_table.schema()[col]
+            if left_col_type != right_col_type:
+                other_table = other_table.cast({col: left_col_type})
+
+        self.query = self.query.select(common_columns)
+        other_table = other_table.select(common_columns)
         return self.query.union(other_table, distinct=union_args.distinct)
 
     def apply_filter(self, filter_args):
@@ -310,6 +345,9 @@ class IbisQueryBuilder:
         return self.query.aggregate(**aggregates, by=group_bys)
 
     def apply_order_by(self, order_by_args):
+        # check if column exists in current query schema, if not then skip
+        if order_by_args.column.column_name not in self.query.columns:
+            return self.query
         order_fn = ibis.asc if order_by_args.direction == "asc" else ibis.desc
         return self.query.order_by(order_fn(order_by_args.column.column_name))
 
@@ -448,13 +486,15 @@ class IbisQueryBuilder:
         if not expression or not expression.strip():
             raise ValueError(f"Invalid expression: {expression}")
 
+        frappe.flags.current_ibis_query = self.query
         context = frappe._dict()
         context.q = _
         context.update(self.get_current_columns())
         context.update(get_functions())
         context.update(additonal_context or {})
-
-        return exec_with_return(expression, context)
+        ret = exec_with_return(expression, context)
+        frappe.flags.current_ibis_query = None
+        return ret
 
     def get_current_columns(self):
         # TODO: handle collisions with function names
@@ -462,8 +502,10 @@ class IbisQueryBuilder:
 
 
 def execute_ibis_query(
-    query: IbisQuery, query_name=None, limit=100, cache=False, cache_expiry=3600
+    query: IbisQuery, limit=100, cache=True, cache_expiry=3600
 ) -> pd.DataFrame:
+    limit = int(limit or 100)
+    limit = min(max(limit, 1), 10_00_000)
     query = query.head(limit) if limit else query
     sql = ibis.to_sql(query)
 
@@ -472,12 +514,11 @@ def execute_ibis_query(
 
     start = time.monotonic()
     res: pd.DataFrame = query.execute()
-    create_execution_log(sql, flt(time.monotonic() - start, 3), query_name)
+    create_execution_log(sql, flt(time.monotonic() - start, 3))
 
     res = res.replace({pd.NaT: None, np.nan: None})
 
     if cache:
-        # TODO: fix: pivot queries are not same, so cache key is always different
         cache_results(sql, res, cache_expiry)
 
     return res
@@ -563,3 +604,10 @@ def exec_with_return(
         return safe_eval(last_expression, _globals, _locals)
     else:
         return safe_eval(code, _globals, _locals)
+
+
+def get_ibis_table_name(table: IbisQuery):
+    dt = table.op().find_topmost(DatabaseTable)
+    if not dt:
+        return None
+    return dt[0].name

@@ -9,9 +9,9 @@ import {
 	AxisChartConfig,
 	DountChartConfig,
 	NumberChartConfig,
-	TableChartConfig,
+	TableChartConfig
 } from '../types/chart.types'
-import { FilterArgs, GranularityType, Operation } from '../types/query.types'
+import { FilterArgs, GranularityType, Measure, Operation } from '../types/query.types'
 import { WorkbookChart } from '../types/workbook.types'
 
 const charts = new Map<string, Chart>()
@@ -44,20 +44,25 @@ function makeChart(workbookChart: WorkbookChart) {
 
 		refresh,
 		updateGranularity,
+		resetConfig,
 
 		getShareLink,
+
+		updateMeasure,
+		removeMeasure,
 
 		history: {} as UseRefHistoryReturn<any, any>,
 	})
 
 	wheneverChanges(
 		() => chart.doc.query,
-		() => resetConfig()
+		() => refresh()
 	)
 
 	function resetConfig() {
 		chart.doc.config = {} as WorkbookChart['config']
 		chart.doc.config.order_by = []
+		chart.doc.config.limit = 100
 		chart.dataQuery.reset()
 	}
 
@@ -87,7 +92,7 @@ function makeChart(workbookChart: WorkbookChart) {
 		} else if (chart.doc.chart_type === 'Number') {
 			const _config = unref(chart.doc.config as NumberChartConfig)
 			prepared = prepareNumberChartQuery(_config)
-		} else if (chart.doc.chart_type === 'Donut') {
+		} else if (chart.doc.chart_type === 'Donut' || chart.doc.chart_type === 'Funnel') {
 			const _config = unref(chart.doc.config as DountChartConfig)
 			prepared = prepareDonutChartQuery(_config)
 		} else if (chart.doc.chart_type === 'Table') {
@@ -259,6 +264,7 @@ function makeChart(workbookChart: WorkbookChart) {
 				query_name: workbookChart.query,
 			}),
 		})
+		chart.doc.use_live_connection = chart.baseQuery.doc.use_live_connection
 		chart.dataQuery.doc.use_live_connection = chart.baseQuery.doc.use_live_connection
 	}
 	function setCustomFilters(filters: FilterArgs[]) {
@@ -296,7 +302,7 @@ function makeChart(workbookChart: WorkbookChart) {
 					value[index].granularity = granularity
 				}
 			}
-			if (value.column_name === column_name) {
+			if (value && value.column_name === column_name) {
 				value.granularity = granularity
 			}
 		})
@@ -311,6 +317,18 @@ function makeChart(workbookChart: WorkbookChart) {
 		return (
 			chart.doc.share_link || `${window.location.origin}/insights/shared/chart/${chart.doc.name}`
 		)
+	}
+
+	function updateMeasure(measure: Measure) {
+		if (!chart.doc.calculated_measures) chart.doc.calculated_measures = {}
+		chart.doc.calculated_measures = {
+			...chart.doc.calculated_measures,
+			[measure.measure_name]: measure,
+		}
+	}
+	function removeMeasure(measure: Measure) {
+		if (!chart.doc.calculated_measures) return
+		delete chart.doc.calculated_measures[measure.measure_name]
 	}
 
 	chart.history = useDebouncedRefHistory(

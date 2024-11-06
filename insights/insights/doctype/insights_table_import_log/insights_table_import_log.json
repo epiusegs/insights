@@ -4,6 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "status",
   "data_source",
   "table_name",
   "parquet_file",
@@ -57,7 +58,7 @@
   },
   {
    "fieldname": "parquet_file",
-   "fieldtype": "Data",
+   "fieldtype": "Text",
    "label": "Parquet File",
    "read_only": 1
   },
@@ -118,17 +119,26 @@
    "label": "Time Taken (Seconds)",
    "non_negative": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "In Progress\nCompleted\nFailed",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-10-28 19:25:56.672054",
+ "modified": "2024-11-03 15:28:54.289437",
  "modified_by": "Administrator",
  "module": "Insights",
  "name": "Insights Table Import Log",
  "owner": "Administrator",
  "permissions": [
   {
+   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
