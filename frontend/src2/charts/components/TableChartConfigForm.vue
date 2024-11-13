@@ -4,6 +4,9 @@ import { TableChartConfig } from '../../types/chart.types'
 import { DimensionOption, MeasureOption } from './ChartConfigForm.vue'
 import CollapsibleSection from './CollapsibleSection.vue'
 import { watchEffect } from 'vue'
+import DimensionPicker from './DimensionPicker.vue'
+import MeasurePicker from './MeasurePicker.vue'
+import DraggableList from '../../components/DraggableList.vue'
 
 const props = defineProps<{
 	dimensions: DimensionOption[]
@@ -33,87 +36,65 @@ watchEffect(() => {
 
 <template>
 	<CollapsibleSection title="Rows">
-		<div class="flex flex-col gap-2">
-			<template v-for="(row, idx) in config.rows" :key="idx">
-				<div class="flex items-end gap-1 overflow-hidden">
-					<div class="flex-1">
-						<Autocomplete
-							placeholder="Select a column"
-							:showFooter="true"
-							:options="props.dimensions"
-							:modelValue="row.column_name"
-							@update:modelValue="Object.assign(row, $event || {})"
-						/>
-					</div>
-					<Button class="flex-shrink-0" @click="config.rows.splice(idx, 1)">
-						<template #icon>
-							<XIcon class="h-4 w-4 text-gray-700" stroke-width="1.5" />
-						</template>
-					</Button>
-				</div>
-			</template>
+		<div>
+			<DraggableList v-model:items="config.rows" group="rows">
+				<template #item="{ item, index }">
+					<DimensionPicker
+						:options="props.dimensions"
+						:model-value="item"
+						@update:model-value="Object.assign(item, $event || {})"
+						@remove="config.rows.splice(index, 1)"
+					/>
+				</template>
+			</DraggableList>
 			<button
-				class="text-left text-xs text-gray-600 hover:underline"
+				class="mt-1.5 text-left text-xs text-gray-600 hover:underline"
 				@click="config.rows.push({} as any)"
 			>
-				+ Add Row
+				+ Add column
 			</button>
 		</div>
 	</CollapsibleSection>
+
 	<CollapsibleSection title="Columns">
-		<div class="flex flex-col gap-2">
-			<template v-for="(col, idx) in config.columns" :key="idx">
-				<div class="flex items-end gap-1 overflow-hidden">
-					<div class="flex-1">
-						<Autocomplete
-							placeholder="Select a column"
-							:showFooter="true"
-							:options="props.dimensions"
-							:modelValue="col.column_name"
-							@update:modelValue="Object.assign(col, $event || {})"
-						/>
-					</div>
-					<Button class="flex-shrink-0" @click="config.columns.splice(idx, 1)">
-						<template #icon>
-							<XIcon class="h-4 w-4 text-gray-700" stroke-width="1.5" />
-						</template>
-					</Button>
-				</div>
-			</template>
+		<div>
+			<DraggableList v-model:items="config.columns" group="columns">
+				<template #item="{ item, index }">
+					<DimensionPicker
+						:options="props.dimensions"
+						:model-value="item"
+						@update:model-value="Object.assign(item, $event || {})"
+						@remove="config.columns.splice(index, 1)"
+					/>
+				</template>
+			</DraggableList>
 			<button
-				class="text-left text-xs text-gray-600 hover:underline"
+				class="mt-1.5 text-left text-xs text-gray-600 hover:underline"
 				@click="config.columns.push({} as any)"
 			>
-				+ Add Column
+				+ Add column
 			</button>
 		</div>
 	</CollapsibleSection>
+
 	<CollapsibleSection title="Values">
 		<div class="flex flex-col gap-3">
-			<div class="flex flex-col gap-2">
-				<template v-for="(val, idx) in config.values" :key="idx">
-					<div class="flex items-end gap-1 overflow-hidden">
-						<div class="flex-1">
-							<Autocomplete
-								placeholder="Select a column"
-								:showFooter="true"
-								:options="props.measures"
-								:modelValue="val.measure_name"
-								@update:modelValue="Object.assign(val, $event || {})"
-							/>
-						</div>
-						<Button class="flex-shrink-0" @click="config.values.splice(idx, 1)">
-							<template #icon>
-								<XIcon class="h-4 w-4 text-gray-700" stroke-width="1.5" />
-							</template>
-						</Button>
-					</div>
-				</template>
+			<div>
+				<DraggableList v-model:items="config.values" group="values">
+					<template #item="{ item, index }">
+						<MeasurePicker
+							:options="props.measures"
+							:model-value="item"
+							@update:model-value="Object.assign(item, $event || {})"
+							@remove="config.values.splice(index, 1)"
+						/>
+					</template>
+				</DraggableList>
 				<button
-					class="text-left text-xs text-gray-600 hover:underline"
+					class="mt-1.5 text-left text-xs text-gray-600 hover:underline"
 					@click="config.values.push({} as any)"
 				>
-					+ Add Value
+					+ Add column
 				</button>
 			</div>
 			<Checkbox label="Show Filters" v-model="config.show_filter_row" />

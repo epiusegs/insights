@@ -95,7 +95,7 @@ fixtures = [
     },
     {
         "dt": "Insights Data Source v3",
-        "filters": {"name": ("in", ["Site DB"])},
+        "filters": {"name": "Site DB"},
     },
 ]
 

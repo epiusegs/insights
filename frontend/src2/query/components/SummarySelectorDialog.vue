@@ -5,6 +5,7 @@ import { FIELDTYPES } from '../../helpers/constants'
 import {
 	aggregations,
 	ColumnMeasure,
+	ColumnOption,
 	Dimension,
 	DimensionDataType,
 	MeasureDataType,
@@ -20,19 +21,16 @@ const emit = defineEmits({ select: (args: SummarizeArgs) => true })
 const showDialog = defineModel()
 
 const query = inject<Query>('query')!
-const columnOptions = ref<QueryResultColumn[]>([])
-query.getColumnsForSelection().then((cols: QueryResultColumn[]) => {
-	columnOptions.value = cols.map((col) => ({
-		...col,
-		value: col.name,
-	}))
+const columnOptions = ref<ColumnOption[]>([])
+query.getColumnsForSelection().then((cols: ColumnOption[]) => {
+	columnOptions.value = cols
 })
 
 const numberColumns = computed(() =>
-	columnOptions.value.filter((col) => FIELDTYPES.NUMBER.includes(col.type))
+	columnOptions.value.filter((col) => FIELDTYPES.NUMBER.includes(col.data_type))
 )
 const nonNumberColumns = computed(() =>
-	columnOptions.value.filter((col) => !FIELDTYPES.NUMBER.includes(col.type))
+	columnOptions.value.filter((col) => !FIELDTYPES.NUMBER.includes(col.data_type))
 )
 
 const measures = ref<ColumnMeasure[]>(copy((props.summary?.measures as ColumnMeasure[]) || []))
@@ -58,6 +56,7 @@ function addDimension() {
 		column_name: '',
 		data_type: 'String',
 		granularity: 'month',
+		dimension_name: '',
 	})
 }
 function resetSelections() {
@@ -96,18 +95,21 @@ function confirmSelections() {
 									placeholder="Agg"
 									:options="aggregations"
 									:modelValue="measure.aggregation"
-									@update:modelValue="measure.aggregation = $event.value"
+									@update:modelValue="(e: any) => {
+										measure.aggregation = e.value
+										measure.measure_name = `${e.value}_${measure.column_name}`
+									}"
 									:hide-search="true"
 								/>
 								<Autocomplete
 									button-classes="rounded-l-none"
-									:placeholder="measure.aggregation"
+									placeholder="Column"
 									:options="columnOptions"
 									:modelValue="measure.column_name"
-									@update:model-value="(e: QueryResultColumn) => {
-										measure.column_name = e.name
-										measure.data_type = e.type as MeasureDataType
-										measure.measure_name = `${measure.aggregation}(${e.name})`
+									@update:model-value="(e: ColumnOption) => {
+										measure.column_name = e.value
+										measure.data_type = e.data_type as MeasureDataType
+										measure.measure_name = `${measure.aggregation}_${e.value}`
 									}"
 								>
 									<template #footer>
@@ -135,9 +137,9 @@ function confirmSelections() {
 									placeholder="Column"
 									:options="nonNumberColumns"
 									:modelValue="dimension.column_name"
-									@update:model-value="(e: QueryResultColumn) => {
-										dimension.column_name = e.name
-										dimension.data_type = e.type as DimensionDataType
+									@update:model-value="(e: ColumnOption) => {
+										dimension.column_name = e.value
+										dimension.data_type = e.data_type as DimensionDataType
 									}"
 								>
 									<template #footer>

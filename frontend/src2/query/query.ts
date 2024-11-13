@@ -19,12 +19,12 @@ import {
 	OrderByArgs,
 	PivotWiderArgs,
 	QueryResult,
+	QueryResultColumn,
 	Rename,
 	SelectArgs,
-	Source,
 	SourceArgs,
 	SummarizeArgs,
-	UnionArgs,
+	UnionArgs
 } from '../types/query.types'
 import { WorkbookQuery } from '../types/workbook.types'
 import {
@@ -39,7 +39,6 @@ import {
 	mutate,
 	order_by,
 	pivot_wider,
-	query_table,
 	remove,
 	rename,
 	select,
@@ -68,16 +67,19 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 
 		activeOperationIdx: -1,
 		activeEditIndex: -1,
-		source: computed(() => ({} as Source)),
+		source: computed(() => ''),
 		currentOperations: computed(() => [] as Operation[]),
 		activeEditOperation: computed(() => ({} as Operation)),
 
 		autoExecute: true,
 		executing: false,
+		fetchingCount: false,
 		result: { ...EMPTY_RESULT },
 
 		getOperationsForExecution,
 		execute,
+		fetchResultCount,
+
 		setOperations,
 		setActiveOperation,
 		setActiveEditIndex,
@@ -115,6 +117,8 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 		reorderOperations,
 		reset,
 
+		dashboardFilters: {} as FilterGroupArgs,
+
 		history: {} as UseRefHistoryReturn<any, any>,
 		canUndo() {
 			return !query.activeEditIndex && !query.executing
@@ -137,6 +141,7 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 					column_name: column.name,
 					data_type: column.type as DimensionDataType,
 					granularity: isDate ? 'month' : undefined,
+					dimension_name: column.name,
 				}
 			})
 	})
@@ -153,7 +158,7 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 					return {
 						aggregation: 'sum',
 						column_name: column.name,
-						measure_name: `sum(${column.name})`,
+						measure_name: `sum_of_${column.name}`,
 						data_type: column.type as MeasureDataType,
 					}
 				}),
@@ -163,10 +168,21 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 
 	// @ts-ignore
 	query.source = computed(() => {
-		const sourceOp = query.doc.operations.find((op) => op.type === 'source')
-		if (!sourceOp) return {} as Source
-		return sourceOp as Source
+		const operations = query.getOperationsForExecution()
+		return getDataSource(operations)
 	})
+
+	function getDataSource(operations: Operation[]): string {
+		const source = operations.find((op) => op.type === 'source')
+		if (!source) return ''
+		if (source.table.type === 'table') {
+			return source.table.data_source
+		}
+		if (source.table.type === 'query' && 'query' in source.table) {
+			return getDataSource(source.table.operations!)
+		}
+		return ''
+	}
 
 	// @ts-ignore
 	query.currentOperations = computed(() => {
@@ -194,41 +210,9 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 			return []
 		}
 
-		const sourceOp = query.doc.operations.find((op) => op.type === 'source')
-		if (!sourceOp) {
-			return []
-		}
-
-		if ('query' in sourceOp && sourceOp.query) {
-			// move old structure to new structure
-			sourceOp.table = query_table({
-				query_name: sourceOp.query as string,
-			})
-			delete sourceOp.query
-		}
-
 		let _operations = [...query.currentOperations]
-
-		if (sourceOp.table.type === 'query') {
-			const sourceQuery = getCachedQuery(sourceOp.table.query_name)
-			if (!sourceQuery) {
-				const message = `Source query ${sourceOp.table.query_name} not found`
-				createToast({
-					variant: 'error',
-					title: 'Error',
-					message,
-				})
-				throw new Error(message)
-			}
-
-			const sourceQueryOperations = sourceQuery.getOperationsForExecution()
-			const currentOperationsWithoutSource = query.currentOperations.slice(1)
-
-			_operations = [...sourceQueryOperations, ...currentOperationsWithoutSource]
-		}
-
 		for (const op of _operations) {
-			if (op.type !== 'join' && op.type !== 'union') continue
+			if (op.type !== 'source' && op.type !== 'join' && op.type !== 'union') continue
 			if (op.table.type !== 'query') continue
 
 			const queryTable = getCachedQuery(op.table.query_name)
@@ -243,6 +227,11 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 			}
 
 			op.table.operations = queryTable.getOperationsForExecution()
+		}
+
+		if (query.dashboardFilters.filters?.length) {
+			_operations.push(filter_group(query.dashboardFilters))
+			query.dashboardFilters = {} as FilterGroupArgs
 		}
 
 		return _operations
@@ -267,8 +256,8 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 				query.result.executedSQL = response.sql
 				query.result.columns = response.columns
 				query.result.rows = response.rows
+				query.result.totalRowCount = 0
 				query.result.formattedRows = getFormattedRows(query.result, query.doc.operations)
-				query.result.totalRowCount = response.total_row_count
 				query.result.columnOptions = query.result.columns.map((column) => ({
 					label: column.name,
 					value: column.name,
@@ -276,6 +265,8 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 					query: query.doc.name,
 					data_type: column.type,
 				}))
+				query.result.timeTaken = response.time_taken
+				query.result.lastExecutedAt = new Date()
 			})
 			.catch((e: Error) => {
 				query.result = { ...EMPTY_RESULT }
@@ -283,6 +274,24 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 			})
 			.finally(() => {
 				query.executing = false
+			})
+	}
+
+	async function fetchResultCount() {
+		if (!query.doc.operations.length) return
+
+		query.fetchingCount = true
+		const operations = query.getOperationsForExecution()
+		return call('insights.api.workbooks.fetch_query_results_count', {
+			use_live_connection: query.doc.use_live_connection,
+			operations,
+		})
+			.then((count: number) => {
+				query.result.totalRowCount = count || 0
+			})
+			.catch(showErrorToast)
+			.finally(() => {
+				query.fetchingCount = false
 			})
 	}
 
@@ -644,7 +653,6 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 			query.activeEditOperation.type === 'summarize'
 		) {
 			// remove the active edit operation from the operations
-			// we can't use activeEditIndex because the operations for execution may have more operations (after query table resolution)
 			const idx = operationsForExecution.findIndex((op) => op === query.activeEditOperation)
 			operationsForExecution.splice(idx, 1)
 		}
@@ -653,6 +661,14 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 		return call(method, {
 			use_live_connection: query.doc.use_live_connection,
 			operations: operationsForExecution,
+		}).then((columns: QueryResultColumn[]) => {
+			return columns.map((column) => ({
+				label: column.name,
+				value: column.name,
+				description: column.type,
+				query: query.doc.name,
+				data_type: column.type,
+			}))
 		})
 	}
 
@@ -722,6 +738,8 @@ const EMPTY_RESULT = {
 	formattedRows: [],
 	columns: [],
 	columnOptions: [],
+	timeTaken: 0,
+	lastExecutedAt: new Date(),
 } as QueryResult
 
 export type Query = ReturnType<typeof makeQuery>
