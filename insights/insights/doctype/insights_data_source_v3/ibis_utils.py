@@ -32,6 +32,8 @@ class IbisQueryBuilder:
             try:
                 operation = _dict(operation)
                 self.query = self.perform_operation(operation)
+            except frappe.exceptions.ValidationError as e:
+                raise e
             except Exception as e:
                 operation_type_title = frappe.bold(operation.type.title())
                 frappe.throw(
@@ -70,6 +72,10 @@ class IbisQueryBuilder:
             return self.apply_pivot(operation, "wider")
         elif operation.type == "custom_operation":
             return self.apply_custom_operation(operation)
+        elif operation.type == "sql":
+            return self.apply_sql(operation)
+        elif operation.type == "code":
+            return self.apply_code(operation)
         return self.query
 
     def get_table_or_query(self, table_args):
@@ -416,6 +422,44 @@ class IbisQueryBuilder:
     def apply_custom_operation(self, operation):
         return self.evaluate_expression(operation.expression.expression)
 
+    def apply_sql(self, sql_args):
+        data_source = sql_args.data_source
+        raw_sql = sql_args.raw_sql
+
+        if not raw_sql.strip().lower().startswith(("select", "with")):
+            frappe.throw(
+                "SQL query must start with a SELECT or WITH statement",
+                title="Invalid SQL Query",
+            )
+
+        ds = frappe.get_doc("Insights Data Source v3", data_source)
+        db = ds._get_ibis_backend()
+        return db.sql(raw_sql)
+
+    def apply_code(self, code_args):
+        code = code_args.code
+
+        pandas = frappe._dict()
+        pandas.DataFrame = pd.DataFrame
+        pandas.read_csv = pd.read_csv
+        pandas.json_normalize = pd.json_normalize
+        # prevent users from writing to disk
+        pandas.DataFrame.to_csv = lambda *args, **kwargs: None
+        pandas.DataFrame.to_json = lambda *args, **kwargs: None
+
+        results = []
+        _, _locals = safe_exec(
+            code,
+            _globals={"pandas": pandas},
+            _locals={"results": results},
+            restrict_commit_rollback=True,
+        )
+        results = _locals["results"]
+        if results is None or len(results) == 0:
+            results = [{"error": "No results"}]
+
+        return ibis.memtable(results, name=make_digest(code))
+
     def translate_measure(self, measure):
         if measure.column_name == "count" and measure.aggregation == "count":
             first_column = self.query.columns[0]
@@ -613,7 +657,7 @@ def exec_with_return(
     _globals = _globals or {}
     _locals = _locals or {}
     if last_expression:
-        safe_exec(ast.unparse(a), _globals, _locals)
+        safe_exec(ast.unparse(a), _globals, _locals, restrict_commit_rollback=True)
         return safe_eval(last_expression, _globals, _locals)
     else:
         return safe_eval(code, _globals, _locals)
